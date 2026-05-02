@@ -2,54 +2,55 @@ const puppeteer = require('puppeteer');
 const axios = require('axios');
 
 (async () => {
-  const browser = await puppeteer.launch({ 
-  headless: "new",
-  args: [
-    '--no-sandbox', 
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage', // Aide à éviter les crashs de mémoire sur les serveurs
-    '--disable-accelerated-2d-canvas',
-    '--disable-gpu'
-  ] 
-});
-  const page = await browser.newPage();
-  
-  // 1. Aller sur la page
-  await page.goto('https://www.gameslevelup.com/en/reservation-salle-jeux', { waitUntil: 'networkidle2' });
-
-  // 2. Attendre que le widget Bookeo charge (on attend le texte "SALLE")
-  await page.waitForSelector('body');
-  await new Promise(r => setTimeout(r, 5000)); // Pause de 5s pour laisser le JS charger
-
-  // 3. Extraire les données
-  const data = await page.evaluate(() => {
-    const texte = document.body.innerText;
-    const lignes = [];
-    const maintenant = new Date().toISOString();
+  console.log("=== DÉBUT DU SCRIPT ===");
+  let browser;
+  try {
+    console.log("Étape 1: Lancement de Chrome...");
+    browser = await puppeteer.launch({ 
+      headless: "new",
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+    });
     
-    // Détection de la date dans le texte
-    let currentDate = "2026-05-04";
-    const dateMatch = texte.match(/(?:[A-Za-z]+,?\s+)?(\d{1,2})\s+([A-Za-zéèû]+)/i);
-    if (dateMatch) {
-       const moisMap = {mai:"05",juin:"06",juillet:"07",août:"08",aout:"08"};
-       currentDate = `2026-${moisMap[dateMatch[2].toLowerCase()] || '05'}-${dateMatch[1].padStart(2,'0')}`;
+    const page = await browser.newPage();
+    console.log("Étape 2: Navigation vers le site...");
+    
+    await page.goto('https://www.gameslevelup.com/en/reservation-salle-jeux', { 
+      waitUntil: 'networkidle2', 
+      timeout: 60000 
+    });
+
+    console.log("Étape 3: Attente du widget (15 secondes)...");
+    await new Promise(r => setTimeout(r, 15000));
+
+    console.log("Étape 4: Analyse du contenu de la page...");
+    const results = await page.evaluate(() => {
+      const texte = document.body.innerText;
+      const lignes = [];
+      const maintenant = new Date().toISOString();
+      
+      // On cherche n'importe quel prix avec un signe $ pour voir si le widget est là
+      const regex = /(\d{1,2}:\d{2}).*?SALLE\s+(\d+).*?(\d+).*?\$34\.77/gi;
+      
+      let match;
+      while ((match = regex.exec(texte)) !== null) {
+        lignes.push(["2026-05-04", match[1], "Level Up", "SALLE " + match[2], 34.77, (parseInt(match[3]) === 0 ? "COMPLET" : "RÉSERVER"), maintenant]);
+      }
+      return { nb: lignes.length, apercu: texte.substring(0, 500), data: lignes };
+    });
+
+    console.log("Aperçu du texte trouvé : " + results.apercu);
+    console.log("Nombre de créneaux détectés : " + results.nb);
+
+    if (results.nb > 0) {
+      console.log("Étape 5: Envoi vers Google Sheets...");
+      const response = await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes: results.data });
+      console.log("Réponse de Google : " + response.data);
     }
 
-    // Regex pour Heure, Salle, Places
-    const regex = /(\d{1,2}:\d{2})\s+Level Up Games\s+SALLE\s+(\d+)\s+(\d+)\s+\$34\.77/gi;
-    let match;
-    while ((match = regex.exec(texte)) !== null) {
-      const statut = (parseInt(match[3]) === 0) ? "COMPLET" : "RÉSERVER";
-      lignes.push([currentDate, match[1], "Level Up Games", "SALLE " + match[2], 34.77, statut, maintenant]);
-    }
-    return lignes;
-  });
-
-  // 4. Envoyer à Google Sheets
-  if (data.length > 0) {
-    await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes: data });
-    console.log(`${data.length} créneaux envoyés !`);
+  } catch (error) {
+    console.error("ERREUR DURANT L'EXÉCUTION :", error.message);
+  } finally {
+    if (browser) await browser.close();
+    console.log("=== FIN DU SCRIPT ===");
   }
-
-  await browser.close();
 })();
