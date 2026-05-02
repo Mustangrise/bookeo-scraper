@@ -1,0 +1,16 @@
+name: Update Bookeo Data
+on:
+  schedule:
+    - cron: '0 * * * *' # S'exécute toutes les heures
+  workflow_dispatch: # Permet de le lancer manuellement pour tester
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - run: npm install
+      - run: node scraper.js
