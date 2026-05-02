@@ -1,61 +1,61 @@
 const axios = require('axios');
 
 (async () => {
-  console.log("=== DÉBUT DU SCRIPT (VIA WEBSCRAPING.AI) ===");
+  console.log("=== DÉBUT DU SCRIPT (MODE JS RENDERING) ===");
   
   const apiKey = '2cc7c64a-82de-420e-80f1-b12538494d12';
   const targetUrl = 'https://bookeo.com/gameslevelup/?mode=0';
-  const proxyUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&proxy=residential`;
+  
+  // ON ACTIVE LE RENDU JS (&js=true) ET LE PROXY (&proxy=residential)
+  const proxyUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&proxy=residential&js=true`;
 
   try {
-    console.log("Étape 1: Requête à l'API (via Proxy Résidentiel)...");
+    console.log("Étape 1: Requête avec rendu JS (cela peut prendre 10-20 secondes)...");
     
-    // On appelle l'API de scraping
-    const response = await axios.get(proxyUrl);
+    const response = await axios.get(proxyUrl, { timeout: 60000 });
     const html = response.data;
 
-    // On vérifie si on a reçu du contenu ou encore une erreur
-    if (html.includes("Not found") || html.length < 500) {
-      console.log("⚠️ L'API a répondu, mais Bookeo semble encore résister.");
-      console.log("Aperçu du retour :", html.substring(0, 200));
-      return;
+    if (html.includes("Not found") || html.length < 1000) {
+      console.log("⚠️ Toujours le 404. Tentative de secours sans le mode résidentiel...");
+      // Parfois le mode résidentiel est trop lent pour le rendu JS, on tente le mode standard
+      const fallbackUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&js=true`;
+      const fbResponse = await axios.get(fallbackUrl);
+      if (fbResponse.data.includes("Not found")) {
+          console.log("Aperçu du blocage persistant :", fbResponse.data.substring(0, 300));
+          return;
+      }
     }
 
-    console.log("Étape 2: Analyse des données reçues...");
+    console.log("Étape 2: Analyse du contenu rendu...");
     
-    // Analyse simplifiée du texte (on enlève les balises HTML pour lire le texte)
+    // Nettoyage du HTML pour extraire le texte
     const texteBrut = html.replace(/<[^>]*>?/gm, ' ');
-    const lignes = [];
-    const maintenant = new Date().toISOString();
-    
-    // On cherche les heures (ex: 14:00)
     const regexHeure = /(\d{1,2}:\d{2})/g;
-    const heuresTrouvees = texteBrut.match(regexHeure) || [];
+    const heuresTrouvees = [...new Set(texteBrut.match(regexHeure))]; // On retire les doublons
 
-    console.log(`Nombre d'heures détectées : ${heuresTrouvees.length}`);
+    console.log(`Créneaux uniques détectés : ${heuresTrouvees.length}`);
 
-    heuresTrouvees.forEach(heure => {
-      lignes.push([
+    if (heuresTrouvees.length > 0) {
+      const maintenant = new Date().toISOString();
+      const lignes = heuresTrouvees.map(heure => [
         "2026-05-04",
         heure,
         "Level Up Games",
-        "SALLE DÉTECTÉE",
+        "SALLE",
         34.77,
         "DISPONIBLE",
         maintenant
       ]);
-    });
 
-    if (lignes.length > 0) {
       console.log("Étape 3: Envoi vers Google Sheets...");
       await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes: lignes });
-      console.log("✅ Mission accomplie ! Vérifie ton Google Sheet.");
+      console.log("✅ ENFIN ! Les données devraient être dans ton Sheet.");
     } else {
-      console.log("❌ Aucun créneau trouvé dans le texte reçu.");
+      console.log("❌ Le rendu a réussi mais aucun créneau n'est visible.");
     }
 
   } catch (error) {
-    console.error("ERREUR CRITIQUE :", error.message);
+    console.error("ERREUR :", error.message);
   }
 
   console.log("=== FIN DU SCRIPT ===");
