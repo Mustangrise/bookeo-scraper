@@ -38,7 +38,7 @@ const axios = require('axios');
 
   // 4. Envoyer à Google Sheets
   if (data.length > 0) {
-    await axios.post(https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec { lignes: data });
+    await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes: data });
     console.log(`${data.length} créneaux envoyés !`);
   }
 
