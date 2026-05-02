@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 const axios = require('axios');
 
 (async () => {
-  console.log("=== DÉBUT DU SCRIPT (ACCÈS DIRECT WIDGET) ===");
+  console.log("=== DÉBUT DU SCRIPT (URL SOURCE BOOKEO) ===");
   let browser;
   try {
     browser = await puppeteer.launch({ 
@@ -12,24 +12,27 @@ const axios = require('axios');
     
     const page = await browser.newPage();
     
-    // On va directement sur l'URL interne que j'ai trouvée dans ton code HTML
-    const directUrl = 'https://www-gameslevelup-com.filesusr.com/html/0247e3_6c3d142b1a807a8c0ccecbb078462aba.html';
+    // L'URL directe du moteur Bookeo pour ton compte
+    const bookeoDirectUrl = 'https://bookeo.com/gameslevelup/?type=41545XN79X918E5E726673';
     
-    console.log("Étape 1: Connexion directe au widget Bookeo...");
-    await page.goto(directUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    console.log("Étape 1: Connexion à la source Bookeo...");
+    await page.goto(bookeoDirectUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-    console.log("Étape 2: Attente du chargement des créneaux (15s)...");
-    await new Promise(r => setTimeout(r, 15000));
+    console.log("Étape 2: Attente du rendu des disponibilités (20s)...");
+    await new Promise(r => setTimeout(r, 20000));
+
+    // Debug: voir si l'URL a changé (redirection)
+    console.log("URL actuelle : " + page.url());
 
     const results = await page.evaluate(() => {
-      const texte = document.body.innerText;
+      // On récupère TOUT le texte de la page
+      const texte = document.body ? document.body.innerText : "CORPS VIDE";
       const lignes = [];
       const maintenant = new Date().toISOString();
       const dateCible = "2026-05-04"; 
 
-      // Regex ultra-souple pour attraper l'heure et le numéro de salle
-      // On cherche un format type 10:00 ... SALLE 1 ... 4 (places)
-      const regex = /(\d{1,2}:\d{2}).*?SALLE\s+(\d+).*?(\d+)/gi;
+      // Regex simplifiée : Heure (ex: 14:00) + n'importe quoi + SALLE + numéro
+      const regex = /(\d{1,2}:\d{2}).*?SALLE\s+(\d+)/gi;
       
       let match;
       while ((match = regex.exec(texte)) !== null) {
@@ -39,23 +42,28 @@ const axios = require('axios');
             "Level Up Games", 
             "SALLE " + match[2], 
             34.77, 
-            (parseInt(match[3]) === 0 ? "COMPLET" : "RÉSERVER"), 
+            "VÉRIFIER", // On simplifie pour le moment
             maintenant
         ]);
       }
-      return { nb: lignes.length, apercu: texte.substring(0, 500).replace(/\n/g, ' '), data: lignes };
+      return { 
+        nb: lignes.length, 
+        apercu: texte.substring(0, 1000).replace(/\n/g, ' '), 
+        full: texte 
+      };
     });
 
-    console.log("Texte extrait : " + results.apercu);
+    console.log("Aperçu du texte brut :");
+    console.log(results.apercu);
+    console.log("-----------------------");
     console.log("Nombre de créneaux détectés : " + results.nb);
 
     if (results.nb > 0) {
       console.log("Étape 3: Envoi vers Google Sheets...");
-      // Ton URL Google Script
       await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes: results.data });
-      console.log("✅ Données envoyées !");
+      console.log("✅ Succès !");
     } else {
-      console.log("❌ La page est chargée mais aucun créneau trouvé. Vérifie la date sur Bookeo.");
+      console.log("❌ Aucun créneau. Si l'aperçu est 'CORPS VIDE', Bookeo bloque Puppeteer.");
     }
 
   } catch (error) {
