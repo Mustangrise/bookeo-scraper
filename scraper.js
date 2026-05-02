@@ -1,59 +1,62 @@
-const puppeteer = require('puppeteer');
 const axios = require('axios');
 
 (async () => {
-  console.log("=== DÉBUT DU SCRIPT (CONTOURNEMENT RÉSEAU) ===");
-  let browser;
+  console.log("=== DÉBUT DU SCRIPT (VIA WEBSCRAPING.AI) ===");
+  
+  const apiKey = '2cc7c64a-82de-420e-80f1-b12538494d12';
+  const targetUrl = 'https://bookeo.com/gameslevelup/?mode=0';
+  const proxyUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&proxy=residential`;
+
   try {
-    browser = await puppeteer.launch({ 
-      headless: "new",
-      args: [
-        '--no-sandbox', 
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process'
-      ] 
+    console.log("Étape 1: Requête à l'API (via Proxy Résidentiel)...");
+    
+    // On appelle l'API de scraping
+    const response = await axios.get(proxyUrl);
+    const html = response.data;
+
+    // On vérifie si on a reçu du contenu ou encore une erreur
+    if (html.includes("Not found") || html.length < 500) {
+      console.log("⚠️ L'API a répondu, mais Bookeo semble encore résister.");
+      console.log("Aperçu du retour :", html.substring(0, 200));
+      return;
+    }
+
+    console.log("Étape 2: Analyse des données reçues...");
+    
+    // Analyse simplifiée du texte (on enlève les balises HTML pour lire le texte)
+    const texteBrut = html.replace(/<[^>]*>?/gm, ' ');
+    const lignes = [];
+    const maintenant = new Date().toISOString();
+    
+    // On cherche les heures (ex: 14:00)
+    const regexHeure = /(\d{1,2}:\d{2})/g;
+    const heuresTrouvees = texteBrut.match(regexHeure) || [];
+
+    console.log(`Nombre d'heures détectées : ${heuresTrouvees.length}`);
+
+    heuresTrouvees.forEach(heure => {
+      lignes.push([
+        "2026-05-04",
+        heure,
+        "Level Up Games",
+        "SALLE DÉTECTÉE",
+        34.77,
+        "DISPONIBLE",
+        maintenant
+      ]);
     });
-    
-    const page = await browser.newPage();
-    
-    // On change d'identité (Windows au lieu d'iPhone)
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
 
-    // On génère un nombre aléatoire pour forcer Bookeo à ignorer son blocage 404 habituel
-    const cacheBuster = Math.floor(Math.random() * 1000000);
-    const url = `https://bookeo.com/gameslevelup/?mode=0&cb=${cacheBuster}`;
-    
-    console.log("Étape 1: Tentative avec Cache-Buster...");
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-
-    await new Promise(r => setTimeout(r, 15000));
-
-    const results = await page.evaluate(() => {
-      const text = document.body.innerText;
-      const hours = text.match(/(\d{1,2}:\d{2})/g) || [];
-      return { 
-        content: text.substring(0, 300),
-        found: hours.length,
-        allHours: hours
-      };
-    });
-
-    console.log("Texte capturé : " + results.content);
-
-    if (results.found > 0) {
-      console.log(`Succès ! ${results.found} créneaux trouvés.`);
-      // Envoi simplifié pour tester si ça arrive dans le Sheet
-      await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { 
-          lignes: [[new Date().toLocaleDateString(), results.allHours[0], "Level Up", "DÉTECTÉ", 34.77, "OUI", new Date().toISOString()]] 
-      });
+    if (lignes.length > 0) {
+      console.log("Étape 3: Envoi vers Google Sheets...");
+      await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes: lignes });
+      console.log("✅ Mission accomplie ! Vérifie ton Google Sheet.");
     } else {
-      console.log("❌ Toujours bloqué par le pare-feu Bookeo (404).");
+      console.log("❌ Aucun créneau trouvé dans le texte reçu.");
     }
 
   } catch (error) {
-    console.error("ERREUR :", error.message);
-  } finally {
-    if (browser) await browser.close();
-    console.log("=== FIN DU SCRIPT ===");
+    console.error("ERREUR CRITIQUE :", error.message);
   }
+
+  console.log("=== FIN DU SCRIPT ===");
 })();
