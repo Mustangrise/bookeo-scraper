@@ -2,67 +2,52 @@ const puppeteer = require('puppeteer');
 const axios = require('axios');
 
 (async () => {
-  console.log("=== DÉBUT DU SCRIPT (MODE MOBILE) ===");
+  console.log("=== DÉBUT DU SCRIPT (CONTOURNEMENT RÉSEAU) ===");
   let browser;
   try {
     browser = await puppeteer.launch({ 
       headless: "new",
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+      args: [
+        '--no-sandbox', 
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ] 
     });
     
     const page = await browser.newPage();
     
-    // On simule un iPhone pour forcer la version légère
-    await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1');
-    await page.setViewport({ width: 375, height: 667 });
+    // On change d'identité (Windows au lieu d'iPhone)
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
 
-    // URL simplifiée pour l'affichage des réservations
-    const url = 'https://bookeo.com/gameslevelup/?mode=0&category=41545XN79X918E5E726673';
+    // On génère un nombre aléatoire pour forcer Bookeo à ignorer son blocage 404 habituel
+    const cacheBuster = Math.floor(Math.random() * 1000000);
+    const url = `https://bookeo.com/gameslevelup/?mode=0&cb=${cacheBuster}`;
     
-    console.log("Étape 1: Chargement de la version mobile...");
+    console.log("Étape 1: Tentative avec Cache-Buster...");
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // On laisse le temps au JS de construire la liste
     await new Promise(r => setTimeout(r, 15000));
 
     const results = await page.evaluate(() => {
-      // On cherche tout ce qui ressemble à une heure (ex: 14:00)
-      const content = document.body.innerText;
-      const lines = [];
-      const now = new Date().toISOString();
-      
-      // On cherche l'heure suivie du texte environnant
-      const regex = /(\d{1,2}:\d{2})/g;
-      const matches = content.match(regex) || [];
-      
-      // On cherche spécifiquement les conteneurs de créneaux
-      const slots = document.querySelectorAll('.bookeo_slot, [id*="slot"]');
-      
+      const text = document.body.innerText;
+      const hours = text.match(/(\d{1,2}:\d{2})/g) || [];
       return { 
-          text: content.substring(0, 500).replace(/\n/g, ' '),
-          nbMatches: matches.length,
-          nbElements: slots.length
+        content: text.substring(0, 300),
+        found: hours.length,
+        allHours: hours
       };
     });
 
-    console.log("Aperçu du contenu mobile : " + results.text);
-    console.log("Heures trouvées : " + results.nbMatches);
+    console.log("Texte capturé : " + results.content);
 
-    // Si on ne voit toujours rien, on tente de faire un screenshot (pour debug interne GitHub)
-    if (results.nbMatches === 0) {
-        console.log("Tentative de détection par structure alternative...");
-    }
-
-    // Note : Pour ne pas saturer ton Sheet de lignes vides, 
-    // on n'envoie que si on trouve au moins un créneau.
-    if (results.nbMatches > 0) {
-        console.log("Des créneaux ont été détectés ! Envoi en cours...");
-        // Logique d'envoi simplifiée
-        await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { 
-            lignes: [["2026-05-04", "CHECK", "Level Up", "Vérifier site", 34.77, "DISPO", new Date().toISOString()]] 
-        });
+    if (results.found > 0) {
+      console.log(`Succès ! ${results.found} créneaux trouvés.`);
+      // Envoi simplifié pour tester si ça arrive dans le Sheet
+      await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { 
+          lignes: [[new Date().toLocaleDateString(), results.allHours[0], "Level Up", "DÉTECTÉ", 34.77, "OUI", new Date().toISOString()]] 
+      });
     } else {
-        console.log("❌ La version mobile est aussi bloquée ou vide.");
+      console.log("❌ Toujours bloqué par le pare-feu Bookeo (404).");
     }
 
   } catch (error) {
