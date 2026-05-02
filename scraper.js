@@ -2,7 +2,16 @@ const puppeteer = require('puppeteer');
 const axios = require('axios');
 
 (async () => {
-  const browser = await puppeteer.launch({ headless: "new" });
+  const browser = await puppeteer.launch({ 
+  headless: "new",
+  args: [
+    '--no-sandbox', 
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage', // Aide à éviter les crashs de mémoire sur les serveurs
+    '--disable-accelerated-2d-canvas',
+    '--disable-gpu'
+  ] 
+});
   const page = await browser.newPage();
   
   // 1. Aller sur la page
