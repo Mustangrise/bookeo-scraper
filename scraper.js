@@ -1,62 +1,58 @@
 const axios = require('axios');
 
 (async () => {
-  console.log("=== DÉBUT DU SCRIPT (MODE JS RENDERING) ===");
+  console.log("=== TENTATIVE DE CONTOURNEMENT PAR RÉFÉRENCE ===");
   
   const apiKey = '2cc7c64a-82de-420e-80f1-b12538494d12';
-  const targetUrl = 'https://bookeo.com/gameslevelup/?mode=0';
+  // L'URL exacte du widget tel qu'il apparaît dans ton code Wix
+  const targetUrl = 'https://bookeo.com/gameslevelup/?type=41545XN79X918E5E726673';
   
-  // ON ACTIVE LE RENDU JS (&js=true) ET LE PROXY (&proxy=residential)
-  const proxyUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&proxy=residential&js=true`;
+  // On configure les headers pour imiter Wix
+  const customHeaders = {
+    "Referer": "https://www.gameslevelup.com/",
+    "Origin": "https://www.gameslevelup.com",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  };
+
+  const proxyUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&js=true&proxy=residential&custom_headers=${encodeURIComponent(JSON.stringify(customHeaders))}`;
 
   try {
-    console.log("Étape 1: Requête avec rendu JS (cela peut prendre 10-20 secondes)...");
+    console.log("Étape 1: Envoi de la requête avec simulation d'origine Wix...");
     
     const response = await axios.get(proxyUrl, { timeout: 60000 });
     const html = response.data;
 
-    if (html.includes("Not found") || html.length < 1000) {
-      console.log("⚠️ Toujours le 404. Tentative de secours sans le mode résidentiel...");
-      // Parfois le mode résidentiel est trop lent pour le rendu JS, on tente le mode standard
-      const fallbackUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&js=true`;
-      const fbResponse = await axios.get(fallbackUrl);
-      if (fbResponse.data.includes("Not found")) {
-          console.log("Aperçu du blocage persistant :", fbResponse.data.substring(0, 300));
+    if (html.includes("Not found")) {
+      console.log("❌ Le pare-feu Bookeo refuse toujours l'accès direct.");
+      console.log("Dernier recours : On essaie de scraper la page Wix elle-même avec JS.");
+      
+      const wixUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent('https://www.gameslevelup.com/r%C3%A9servation')}&js=true&proxy=residential&wait_for_selector=.bookeo_item`;
+      const wixResponse = await axios.get(wixUrl);
+      
+      if (wixResponse.data.includes("Not found")) {
+          console.log("Blocage total au niveau du domaine.");
           return;
       }
+      console.log("Réponse de la page Wix reçue !");
     }
 
-    console.log("Étape 2: Analyse du contenu rendu...");
-    
-    // Nettoyage du HTML pour extraire le texte
+    // Extraction des données si succès
     const texteBrut = html.replace(/<[^>]*>?/gm, ' ');
     const regexHeure = /(\d{1,2}:\d{2})/g;
-    const heuresTrouvees = [...new Set(texteBrut.match(regexHeure))]; // On retire les doublons
+    const heures = [...new Set(texteBrut.match(regexHeure))];
 
-    console.log(`Créneaux uniques détectés : ${heuresTrouvees.length}`);
-
-    if (heuresTrouvees.length > 0) {
-      const maintenant = new Date().toISOString();
-      const lignes = heuresTrouvees.map(heure => [
-        "2026-05-04",
-        heure,
-        "Level Up Games",
-        "SALLE",
-        34.77,
-        "DISPONIBLE",
-        maintenant
-      ]);
-
-      console.log("Étape 3: Envoi vers Google Sheets...");
-      await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes: lignes });
-      console.log("✅ ENFIN ! Les données devraient être dans ton Sheet.");
+    if (heures.length > 0) {
+      console.log(`✅ SUCCÈS : ${heures.length} créneaux trouvés.`);
+      // Envoi vers Google Sheets
+      await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', {
+        lignes: heures.map(h => ["2026-05-04", h, "Level Up", "Salle", 34.77, "Dispo", new Date().toISOString()])
+      });
     } else {
-      console.log("❌ Le rendu a réussi mais aucun créneau n'est visible.");
+      console.log("❓ Pas d'erreur 404, mais aucun créneau trouvé dans le texte.");
     }
 
   } catch (error) {
     console.error("ERREUR :", error.message);
   }
-
   console.log("=== FIN DU SCRIPT ===");
 })();
