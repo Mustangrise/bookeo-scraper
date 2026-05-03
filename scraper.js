@@ -1,69 +1,63 @@
 const axios = require('axios');
 
 (async () => {
-  console.log("=== EXTRACTION DES CRÉNEAUX (MODE INCEPTION) ===");
+  console.log("=== STRATÉGIE DIRECTE : EXTRACTION DE TEXTE ===");
   
   const apiKey = '2cc7c64a-82de-420e-80f1-b12538494d12';
+  // On utilise l'URL mobile/directe qui est la plus légère
+  const targetUrl = 'https://bookeo.com/gameslevelup/?mode=0';
   
-  // On cible l'URL de l'Iframe Bookeo que j'ai extraite de ton HTML plus tôt
-  const targetUrl = 'https://www-gameslevelup-com.filesusr.com/html/0247e3_6c3d142b1a807a8c0ccecbb078462aba.html';
-  
-  // On simule une navigation venant de Wix
-  const headers = {
-    "Referer": "https://www.gameslevelup.com/",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-  };
-
-  // Configuration de la requête
-  // js=true : Obligatoire pour Bookeo
-  // proxy=datacenter : Plus stable que residential pour éviter l'erreur 500
-  const proxyUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&js=true&proxy=datacenter&wait_for=5000&headers=${encodeURIComponent(JSON.stringify(headers))}`;
+  // Utilisation de l'endpoint /text (beaucoup plus stable que /html)
+  const proxyUrl = `https://api.webscraping.ai/text?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&proxy=datacenter`;
 
   try {
-    console.log("Étape 1: Chargement direct du widget (via Proxy + JS)...");
+    console.log("Étape 1: Récupération du texte brut via l'API...");
     
-    const response = await axios.get(proxyUrl, { timeout: 60000 });
-    const html = response.data;
+    const response = await axios.get(proxyUrl);
+    const texteBrut = response.data;
 
-    // Debug rapide du contenu reçu
-    if (html.includes("Not found")) {
-        console.log("❌ Bookeo bloque encore (404). On tente sans le Referer...");
-        const simpleUrl = `https://api.webscraping.ai/html?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&js=true&wait_for=5000`;
-        const simpleRes = await axios.get(simpleUrl);
-        analyze(simpleRes.data);
-    } else {
-        analyze(html);
-    }
+    console.log("Étape 2: Analyse des données...");
 
-  } catch (error) {
-    console.error("ERREUR :", error.message);
-    if (error.response) console.log("Code d'erreur API :", error.response.status);
-  }
-
-  async function analyze(content) {
-    console.log("Étape 2: Analyse du texte...");
-    // Nettoyage pour extraire les heures
-    const texteBrut = content.replace(/<[^>]*>?/gm, ' ').replace(/\s\s+/g, ' ');
+    // On cherche les patterns d'heures (HH:MM)
     const regexHeure = /(\d{1,2}:\d{2})/g;
-    const heures = [...new Set(texteBrut.match(regexHeure) || [])];
-
-    // Filtrage pour ne garder que les heures de journée (9h-23h)
-    const créneaux = heures.filter(h => {
+    const toutesLesHeures = texteBrut.match(regexHeure) || [];
+    
+    // On retire les doublons et on filtre les heures de bureau/soirée
+    const heuresUniques = [...new Set(toutesLesHeures)].filter(h => {
         const hour = parseInt(h.split(':')[0]);
         return hour >= 9 && hour <= 23;
     });
 
-    if (créneaux.length > 0) {
-      console.log(`✅ ${créneaux.length} créneaux trouvés !`);
+    if (heuresUniques.length > 0) {
+      console.log(`✅ SUCCÈS : ${heuresUniques.length} créneaux potentiels trouvés.`);
+      console.log("Heures :", heuresUniques.join(' | '));
+      
       const maintenant = new Date().toISOString();
-      const lignes = créneaux.map(h => ["2026-05-04", h, "Level Up", "Salle", 34.77, "DISPO", maintenant]);
+      const lignes = heuresUniques.map(h => [
+        "2026-05-04", 
+        h, 
+        "Level Up Games", 
+        "Salle", 
+        34.77, 
+        "DISPONIBLE", 
+        maintenant
+      ]);
 
+      console.log("Étape 3: Envoi vers Google Sheets...");
       await axios.post('https://script.google.com/macros/s/AKfycbz9wfzo6s7t6AtG7p9BHqwKUCzSq1IVA7ZJ7n5E4eJixAYd1Y4qyToWtRfBEC_Tk8MI/exec', { lignes });
-      console.log("✅ Envoi réussi.");
+      console.log("✅ Données synchronisées.");
     } else {
-      console.log("❌ Aucun créneau dans le texte.");
-      console.log("Aperçu du contenu :", texteBrut.substring(0, 300));
+      console.log("❌ Aucun créneau trouvé dans le texte.");
+      // On affiche un bout du texte pour comprendre ce que l'API voit
+      console.log("Aperçu du texte reçu :", texteBrut.substring(0, 500).replace(/\n/g, ' '));
+      
+      if (texteBrut.includes("Not found")) {
+          console.log("⚠️ Toujours un 404. Bookeo bloque l'IP du datacenter.");
+      }
     }
+
+  } catch (error) {
+    console.error("ERREUR :", error.message);
   }
 
   console.log("=== FIN DU SCRIPT ===");
